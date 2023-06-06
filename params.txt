@@ -1,0 +1,2 @@
+a pretty girl
+Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 2649030387, Size: 512x512, Model hash: afb613dacf, Model: profantasy_v22
