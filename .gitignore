@@ -198,3 +198,4 @@ extensions/*
 outputs
 tmp
 log
+params.txt

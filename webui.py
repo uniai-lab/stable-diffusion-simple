@@ -239,24 +239,15 @@ def wait_on_server(demo=None):
 
 def api_only():
     initialize()
-
     app = FastAPI()
     setup_middleware(app)
     api = create_api(app)
-
-    modules.script_callbacks.app_started_callback(None, app)
-
-    print(f"Startup time: {startup_timer.summary()}.")
-    api.launch(server_name="0.0.0.0" if cmd_opts.listen else "127.0.0.1", port=cmd_opts.port if cmd_opts.port else 7861)
+    api.launch(server_name="0.0.0.0", port=3200)
 
 def webui():
-    launch_api = cmd_opts.api
     initialize()
 
     while 1:
-        if shared.opts.clean_temp_dir_at_start:
-            ui_tempdir.cleanup_tmpdr()
-            startup_timer.record("cleanup temp dir")
 
         modules.script_callbacks.before_ui_callback()
         startup_timer.record("scripts before_ui_callback")
@@ -264,8 +255,7 @@ def webui():
         shared.demo = modules.ui.create_ui()
         startup_timer.record("create ui")
 
-        # this restores the missing /docs endpoint
-        if launch_api and not hasattr(FastAPI, 'original_setup'):
+        if not hasattr(FastAPI, 'original_setup'):
             def fastapi_setup(self):
                 self.docs_url = "/docs"
                 self.redoc_url = "/redoc"
@@ -274,30 +264,19 @@ def webui():
             FastAPI.original_setup = FastAPI.setup
             FastAPI.setup = fastapi_setup
 
-        app, local_url, share_url = shared.demo.queue().launch(
-            share=False,
-            server_name='0.0.0.0',
-            server_port=3200,
-            inbrowser=True,
-        )
-        # after initial launch, disable --autolaunch for subsequent restarts
-        cmd_opts.autolaunch = False
+        app, local_url, share_url = shared.demo.queue().launch(share=False, server_name='0.0.0.0', server_port=3200)
+        create_api(app)
+        modules.progress.setup_progress_api(app)
+        print(local_url)
+        print(share_url)
 
         startup_timer.record("gradio launch")
 
-        # gradio uses a very open CORS policy via app.user_middleware, which makes it possible for
-        # an attacker to trick the user into opening a malicious HTML page, which makes a request to the
-        # running web ui and do whatever the attacker wants, including installing an extension and
-        # running its code. We disable this here. Suggested by RyotaK.
         app.user_middleware = [x for x in app.user_middleware if x.cls.__name__ != 'CORSMiddleware']
 
         setup_middleware(app)
 
-        modules.progress.setup_progress_api(app)
         modules.ui.setup_ui_api(app)
-
-        if launch_api:
-            create_api(app)
 
         ui_extra_networks.add_pages_to_demo(app)
 

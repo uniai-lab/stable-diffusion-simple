@@ -62,7 +62,7 @@ class ProgressResponse(BaseModel):
 
 
 def setup_progress_api(app):
-    return app.add_api_route("/internal/progress", progressapi, methods=["POST"], response_model=ProgressResponse)
+    return app.add_api_route("/api/progress", progressapi, methods=["POST"], response_model=ProgressResponse)
 
 
 def progressapi(req: ProgressRequest):
