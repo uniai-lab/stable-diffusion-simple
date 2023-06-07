@@ -247,102 +247,87 @@ def api_only():
 def webui():
     initialize()
 
-    while 1:
+    modules.script_callbacks.before_ui_callback()
 
-        modules.script_callbacks.before_ui_callback()
-        startup_timer.record("scripts before_ui_callback")
+    shared.demo = modules.ui.create_ui()
 
-        shared.demo = modules.ui.create_ui()
-        startup_timer.record("create ui")
+    if not hasattr(FastAPI, 'original_setup'):
+        def fastapi_setup(self):
+            self.docs_url = "/docs"
+            self.redoc_url = "/redoc"
+            self.original_setup()
 
-        if not hasattr(FastAPI, 'original_setup'):
-            def fastapi_setup(self):
-                self.docs_url = "/docs"
-                self.redoc_url = "/redoc"
-                self.original_setup()
+        FastAPI.original_setup = FastAPI.setup
+        FastAPI.setup = fastapi_setup
 
-            FastAPI.original_setup = FastAPI.setup
-            FastAPI.setup = fastapi_setup
+    app, local_url, share_url = shared.demo.queue().launch(share=False, server_name='0.0.0.0', server_port=3200, inbrowser=True, prevent_thread_lock=True)
 
-        app, local_url, share_url = shared.demo.queue().launch(share=False, server_name='0.0.0.0', server_port=3200)
-        create_api(app)
-        modules.progress.setup_progress_api(app)
-        print(local_url)
-        print(share_url)
+    modules.progress.setup_progress_api(app)
 
-        startup_timer.record("gradio launch")
+    setup_middleware(app)
+    modules.ui.setup_ui_api(app)
+    create_api(app)
 
-        app.user_middleware = [x for x in app.user_middleware if x.cls.__name__ != 'CORSMiddleware']
+    ui_extra_networks.add_pages_to_demo(app)
 
-        setup_middleware(app)
+    modules.script_callbacks.app_started_callback(shared.demo, app)
+    startup_timer.record("scripts app_started_callback")
 
-        modules.ui.setup_ui_api(app)
+    print(f"Startup time: {startup_timer.summary()}.")
 
-        ui_extra_networks.add_pages_to_demo(app)
+    wait_on_server(shared.demo)
+    print('Restarting UI...')
 
-        modules.script_callbacks.app_started_callback(shared.demo, app)
-        startup_timer.record("scripts app_started_callback")
+    startup_timer.reset()
 
-        print(f"Startup time: {startup_timer.summary()}.")
+    sd_samplers.set_samplers()
 
-        if cmd_opts.subpath:
-            redirector = FastAPI()
-            redirector.get("/")
-            mounted_app = gradio.mount_gradio_app(redirector, shared.demo, path=f"/{cmd_opts.subpath}")
+    modules.script_callbacks.script_unloaded_callback()
+    extensions.list_extensions()
+    startup_timer.record("list extensions")
 
-        wait_on_server(shared.demo)
-        print('Restarting UI...')
+    config_state_file = shared.opts.restore_config_state_file
+    shared.opts.restore_config_state_file = ""
+    shared.opts.save(shared.config_filename)
 
-        startup_timer.reset()
+    if os.path.isfile(config_state_file):
+        print(f"*** About to restore extension state from file: {config_state_file}")
+        with open(config_state_file, "r", encoding="utf-8") as f:
+            config_state = json.load(f)
+            config_states.restore_extension_config(config_state)
+        startup_timer.record("restore extension config")
+    elif config_state_file:
+        print(f"!!! Config state backup not found: {config_state_file}")
 
-        sd_samplers.set_samplers()
+    localization.list_localizations(cmd_opts.localizations_dir)
 
-        modules.script_callbacks.script_unloaded_callback()
-        extensions.list_extensions()
-        startup_timer.record("list extensions")
+    modules.scripts.reload_scripts()
+    startup_timer.record("load scripts")
 
-        config_state_file = shared.opts.restore_config_state_file
-        shared.opts.restore_config_state_file = ""
-        shared.opts.save(shared.config_filename)
+    modules.script_callbacks.model_loaded_callback(shared.sd_model)
+    startup_timer.record("model loaded callback")
 
-        if os.path.isfile(config_state_file):
-            print(f"*** About to restore extension state from file: {config_state_file}")
-            with open(config_state_file, "r", encoding="utf-8") as f:
-                config_state = json.load(f)
-                config_states.restore_extension_config(config_state)
-            startup_timer.record("restore extension config")
-        elif config_state_file:
-            print(f"!!! Config state backup not found: {config_state_file}")
+    modelloader.load_upscalers()
+    startup_timer.record("load upscalers")
 
-        localization.list_localizations(cmd_opts.localizations_dir)
+    for module in [module for name, module in sys.modules.items() if name.startswith("modules.ui")]:
+        importlib.reload(module)
+    startup_timer.record("reload script modules")
 
-        modules.scripts.reload_scripts()
-        startup_timer.record("load scripts")
+    modules.sd_models.list_models()
+    startup_timer.record("list SD models")
 
-        modules.script_callbacks.model_loaded_callback(shared.sd_model)
-        startup_timer.record("model loaded callback")
+    shared.reload_hypernetworks()
+    startup_timer.record("reload hypernetworks")
 
-        modelloader.load_upscalers()
-        startup_timer.record("load upscalers")
+    ui_extra_networks.intialize()
+    ui_extra_networks.register_page(ui_extra_networks_textual_inversion.ExtraNetworksPageTextualInversion())
+    ui_extra_networks.register_page(ui_extra_networks_hypernets.ExtraNetworksPageHypernetworks())
+    ui_extra_networks.register_page(ui_extra_networks_checkpoints.ExtraNetworksPageCheckpoints())
 
-        for module in [module for name, module in sys.modules.items() if name.startswith("modules.ui")]:
-            importlib.reload(module)
-        startup_timer.record("reload script modules")
-
-        modules.sd_models.list_models()
-        startup_timer.record("list SD models")
-
-        shared.reload_hypernetworks()
-        startup_timer.record("reload hypernetworks")
-
-        ui_extra_networks.intialize()
-        ui_extra_networks.register_page(ui_extra_networks_textual_inversion.ExtraNetworksPageTextualInversion())
-        ui_extra_networks.register_page(ui_extra_networks_hypernets.ExtraNetworksPageHypernetworks())
-        ui_extra_networks.register_page(ui_extra_networks_checkpoints.ExtraNetworksPageCheckpoints())
-
-        extra_networks.initialize()
-        extra_networks.register_extra_network(extra_networks_hypernet.ExtraNetworkHypernet())
-        startup_timer.record("initialize extra networks")
+    extra_networks.initialize()
+    extra_networks.register_extra_network(extra_networks_hypernet.ExtraNetworkHypernet())
+    startup_timer.record("initialize extra networks")
 
 
 if __name__ == "__main__":
