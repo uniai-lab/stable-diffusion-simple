@@ -192,6 +192,7 @@ models/VAE/*
 !models/VAE/.gitkeep
 models/VAE-approx/*
 !models/VAE-approx/.gitkeep
+!models/VAE-approx/model.pt
 
 extensions/*
 
