@@ -1,5 +1,5 @@
 torch
-fastapi
+fastapi==0.90.1
 numpy
 basicsr==1.4.2
 pytorch_lightning==1.9.4

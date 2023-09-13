@@ -242,7 +242,7 @@ def api_only():
     app = FastAPI()
     setup_middleware(app)
     api = create_api(app)
-    api.launch(server_name="0.0.0.0", port=3200)
+    api.launch(server_name="0.0.0.0", port=3300)
 
 def webui():
     initialize()
